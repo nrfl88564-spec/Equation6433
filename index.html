@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>ตาชั่งแก้สมการ</title>
+<style>
+  /* สูตรสี 60 / 30 / 10
+     60% ฟ้าอ่อน (พื้นหลังหลัก)
+     30% ขาว (การ์ด / แถบเครื่องมือ / ตาชั่ง)
+     10% เขียว (ปุ่มหลัก / เน้น) */
+  :root{
+    --sky:#dff1fb; --sky2:#eef8fe; --sky-deep:#b9def2;
+    --white:#ffffff; --ink:#26485c; --muted:#6b8797;
+    --green:#3fbf8a; --green-dark:#2c9c6e;
+    --bs:min(130px,15vh);           /* ขนาดบล็อกในถาด (ใหญ่ขึ้น ~2.5 เท่าของพื้นที่เดิม) */
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--sky);
+    font-family:"Noto Sans Thai",system-ui,sans-serif;color:var(--ink);
+    touch-action:none;user-select:none;-webkit-user-select:none}
+  #app{display:flex;width:100vw;height:100vh;height:100dvh}
+  #stage{flex:1;position:relative;overflow:hidden;min-width:0;
+    background:linear-gradient(180deg,var(--sky2) 0%,var(--sky) 55%,var(--sky-deep) 100%)}
+  #scale{position:absolute;inset:0;width:100%;height:100%;overflow:visible;touch-action:none}
+
+  /* การ์ดสมการมุมซ้ายบน (กะทัดรัด) */
+  #eqcard{position:absolute;top:14px;left:14px;background:var(--white);border-radius:16px;
+    padding:8px 14px 10px;box-shadow:0 6px 20px rgba(38,72,92,.12);border:2px solid #e3f0f7}
+  #eqcard .row{display:flex;align-items:baseline;gap:10px;white-space:nowrap;line-height:1.3}
+  #eqcard .lbl{font-size:12px;color:var(--muted);min-width:78px}
+  #eqcard .eq{font-size:24px;font-weight:800;letter-spacing:.5px}
+  #eqInit{color:var(--ink)} #eqCur{color:var(--green-dark)}
+  #status{margin-top:4px;font-size:12px;font-weight:700;display:inline-block;padding:2px 12px;border-radius:999px;
+    background:#eef6fb;color:var(--muted)}
+  #status.ok{background:#dff6ec;color:var(--green-dark)}
+  #status.bad{background:#fdecee;color:#d24a58}
+
+  /* แถบเครื่องมือ: เรียงแนวนอนที่มุมขวาบน */
+  #bar{position:absolute;top:14px;right:14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;
+    background:rgba(255,255,255,.94);padding:8px 10px;border-radius:16px;
+    box-shadow:0 6px 18px rgba(38,72,92,.15);max-width:calc(100% - 350px)}
+  .grp{display:flex;gap:8px;align-items:center}
+  .btn{font:inherit;font-size:14px;font-weight:700;padding:8px 13px;border-radius:11px;border:2px solid #d6e8f2;
+    background:var(--white);color:var(--ink);cursor:pointer;white-space:nowrap}
+  .btn.primary{background:var(--green);border-color:var(--green);color:#fff}
+  .btn.sq{padding:6px 11px;font-size:18px;line-height:1}
+  .btn:active{transform:scale(.96)}
+  #xwrap{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);white-space:nowrap}
+  #xwrap b{color:var(--ink);min-width:28px;text-align:center;font-size:14px}
+  #xslider{width:96px;accent-color:var(--green)}
+  #hint{position:absolute;left:50%;transform:translateX(-50%);bottom:18px;font-size:14px;color:var(--ink);
+    background:rgba(255,255,255,.88);padding:6px 16px;border-radius:999px;white-space:nowrap;max-width:calc(100% - 24px);
+    overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+
+  /* ถาดบล็อกด้านข้าง */
+  #tray{width:calc(var(--bs) + 44px);background:var(--white);border-left:2px solid #e3f0f7;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;padding:12px 8px;
+    box-shadow:-6px 0 18px rgba(38,72,92,.08)}
+  #tray h3{margin:0;font-size:13px;color:var(--muted);text-align:center;line-height:1.3}
+  .blk{width:var(--bs);height:var(--bs);display:flex;align-items:center;justify-content:center;
+    font-size:calc(var(--bs)*.38);font-weight:800;
+    cursor:grab;touch-action:none;box-shadow:0 6px 0 rgba(0,0,0,.14),0 10px 14px rgba(38,72,92,.18);
+    border:3px solid rgba(255,255,255,.7)}
+  .circle{border-radius:50%} .square{border-radius:18px}
+  .b-p1{background:linear-gradient(160deg,#7cc4f8,#3b9be6);color:#fff}
+  .b-n1{background:linear-gradient(160deg,#ff8f98,#ec5563);color:#fff}
+  .b-px{background:linear-gradient(160deg,#6fdcaa,#2fb877);color:#fff}
+  .b-nx{background:linear-gradient(160deg,#ffe07a,#f4bf2c);color:#5a4300}
+  #ghost{position:fixed;z-index:50;pointer-events:none;transform:translate(-50%,-50%) rotate(-6deg);
+    display:none;opacity:.95}
+
+  @media (orientation:portrait){
+    :root{--bs:min(130px,19vw)}
+    #app{flex-direction:column}
+    #tray{width:100%;flex-direction:row;justify-content:space-evenly;border-left:0;border-top:2px solid #e3f0f7;padding:12px}
+    #tray h3{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <svg id="scale" viewBox="0 0 700 620" preserveAspectRatio="xMidYMax meet">
+      <defs>
+        <linearGradient id="table" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#f7f9fa"/><stop offset=".35" stop-color="#e6eaed"/><stop offset="1" stop-color="#cfd6da"/>
+        </linearGradient>
+        <linearGradient id="gp1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7cc4f8"/><stop offset="1" stop-color="#3b9be6"/></linearGradient>
+        <linearGradient id="gn1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff8f98"/><stop offset="1" stop-color="#ec5563"/></linearGradient>
+        <linearGradient id="gpx" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6fdcaa"/><stop offset="1" stop-color="#2fb877"/></linearGradient>
+        <linearGradient id="gnx" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe07a"/><stop offset="1" stop-color="#f4bf2c"/></linearGradient>
+        <linearGradient id="metal" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e8f1f6"/><stop offset=".5" stop-color="#ffffff"/><stop offset="1" stop-color="#d5e3ec"/></linearGradient>
+        <filter id="sh" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#26485c" flood-opacity=".28"/></filter>
+      </defs>
+
+      <!-- พื้นโต๊ะสีขาวเทา -->
+      <rect x="-3000" y="500" width="7000" height="3000" fill="url(#table)"/>
+      <rect x="-3000" y="500" width="7000" height="5" fill="#ffffff"/>
+      <rect x="-3000" y="505" width="7000" height="3" fill="#c9d2d7" opacity=".7"/>
+      <ellipse cx="350" cy="522" rx="200" ry="16" fill="#26485c" opacity=".14"/>
+
+      <!-- ฐาน + เสากลาง -->
+      <path d="M240 514 Q240 486 270 486 L430 486 Q460 486 460 514 Z" fill="url(#metal)" stroke="#9ec0d3" stroke-width="3"/>
+      <rect x="336" y="140" width="28" height="352" rx="10" fill="url(#metal)" stroke="#9ec0d3" stroke-width="3"/>
+      <circle cx="350" cy="134" r="20" fill="#ffffff" stroke="#9ec0d3" stroke-width="3"/>
+
+      <g id="dyn"></g>
+    </svg>
+
+    <div id="eqcard">
+      <div class="row"><span class="lbl">สมการเริ่มต้น</span><span class="eq" id="eqInit">-</span></div>
+      <div class="row"><span class="lbl">สมการปัจจุบัน</span><span class="eq" id="eqCur">0 = 0</span></div>
+      <div id="status">ยังไม่มีบล็อก</div>
+    </div>
+
+    <div id="bar">
+      <div class="grp" id="setupCtl">
+        <button class="btn primary" id="lockBtn">ตั้งเป็นสมการหลัก ✓</button>
+      </div>
+      <div class="grp" id="opCtl" style="display:none">
+        <button class="btn" id="undoBtn">↶ ย้อนกลับ</button>
+        <button class="btn" id="editBtn">ตั้งสมการใหม่</button>
+      </div>
+      <div id="xwrap">x ทดลอง <input type="range" id="xslider" min="-10" max="10" step="0.1" value="1"><b id="xv">1</b></div>
+      <button class="btn" id="resetBtn">ล้างทั้งหมด</button>
+      <button class="btn sq" id="fsBtn" title="เต็มจอ">⛶</button>
+    </div>
+
+    <div id="hint"></div>
+  </div>
+
+  <aside id="tray">
+    <h3>หยิบแล้ววาง<br>บนตาชั่ง</h3>
+    <div class="blk circle b-p1" data-t="p1">1</div>
+    <div class="blk circle b-n1" data-t="n1">-1</div>
+    <div class="blk square b-px" data-t="px">x</div>
+    <div class="blk square b-nx" data-t="nx">-x</div>
+  </aside>
+</div>
+<div id="ghost" class="blk"></div>
+
+<script>
+const T = ['p1','n1','px','nx'];
+const OPP = {p1:'n1', n1:'p1', px:'nx', nx:'px'};
+const TXT = {p1:'1', n1:'-1', px:'x', nx:'-x'};
+const TXTC = {p1:'#fff', n1:'#fff', px:'#fff', nx:'#5a4300'};
+const SQUARE = {px:true, nx:true};
+const MAXPAN = 20, DIE_MS = 520;
+// เรขาคณิตตาชั่ง
+const CX = 350, PIVOT_Y = 160, HALF = 200, DROP = 200, TABLE_Y = 500;
+const SZ = 44, GAP = 4, PER = 5;
+
+const svg = document.getElementById('scale');
+const dyn = document.getElementById('dyn');
+const stage = document.getElementById('stage');
+const ghost = document.getElementById('ghost');
+
+let side = {L:[], R:[]};
+let nextId = 1;
+let mode = 'setup';               // setup | operate
+let initEq = null;
+let hist = [];
+let xVal = 1;
+let angle = 0, targetAngle = 0;
+let drag = null;                  // {t, fromPan}
+let hover = null;                 // 'L' | 'R' | null
+
+/* ---------- สมการ ---------- */
+function counts(s){
+  const c = {p1:0,n1:0,px:0,nx:0};
+  side[s].forEach(i => { if(!i.dying) c[i.t]++; });
+  return c;
+}
+function fmtSide(c){
+  const a = c.px - c.nx, b = c.p1 - c.n1, parts = [];
+  if (a !== 0) parts.push(a===1 ? 'x' : a===-1 ? '-x' : a+'x');
+  if (b !== 0) parts.push(parts.length ? (b>0 ? '+ '+b : '- '+Math.abs(b)) : String(b));
+  return parts.length ? parts.join(' ') : '0';
+}
+const fmtEq = (l,r) => fmtSide(l)+' = '+fmtSide(r);
+const valOf = c => (c.px - c.nx)*xVal + (c.p1 - c.n1);
+
+function refresh(){
+  const l = counts('L'), r = counts('R');
+  document.getElementById('eqCur').textContent = fmtEq(l,r);
+  document.getElementById('eqInit').textContent = initEq ? fmtEq(initEq.L, initEq.R) : '-';
+  const diff = valOf(l) - valOf(r);
+  targetAngle = Math.max(-12, Math.min(12, -diff*3));   // ซ้ายหนัก -> ซ้ายลง
+  const st = document.getElementById('status');
+  const empty = !side.L.length && !side.R.length;
+  if (empty){ st.textContent='ยังไม่มีบล็อก'; st.className=''; }
+  else if (Math.abs(diff) < 1e-9){ st.textContent='ตาชั่งสมดุล ✓'; st.className='ok'; }
+  else if (mode === 'operate'){ st.textContent = 'ตาชั่งเอียง — ลองปรับอีกครั้ง'; st.className='bad'; }
+  else { st.textContent = diff>0 ? 'ฝั่งซ้ายหนักกว่า' : 'ฝั่งขวาหนักกว่า'; st.className=''; }
+}
+
+function hint(t){ const h = document.getElementById('hint'); h.textContent = t || ''; h.style.display = t ? 'block':'none'; }
+function defaultHint(){
+  hint(mode==='setup'
+    ? 'ลากบล็อกไปวางฝั่งซ้ายหรือขวา แล้วกด "ตั้งเป็นสมการหลัก"'
+    : 'วางทีละฝั่ง ถ้าตาชั่งเอียงแปลว่ายังไม่ถูก ลองปรับเพิ่มหรือหยิบออก');
+}
+
+/* ---------- เพิ่ม/ลบบล็อก ---------- */
+function purge(){ ['L','R'].forEach(s => side[s] = side[s].filter(i => !i.dying)); }
+
+function addBlock(s, t){
+  const list = side[s];
+  const opp = list.find(i => i.t === OPP[t] && !i.dying);
+  const now = performance.now();
+  if (opp){
+    opp.dying = true; opp.dieAt = now + DIE_MS; opp.t0 = now;
+    list.push({id:nextId++, t, dying:true, dieAt:now+DIE_MS, t0:now});
+    return true;
+  }
+  if (list.length >= MAXPAN) return false;
+  list.push({id:nextId++, t, dying:false});
+  return true;
+}
+function snapshot(){
+  purge();
+  hist.push(JSON.stringify({L:side.L.map(i=>i.t), R:side.R.map(i=>i.t)}));
+  if (hist.length > 100) hist.shift();
+}
+
+function dropOn(s, t, fromPan){
+  purge();
+  if (mode === 'operate' && !fromPan) snapshot();
+  if (!addBlock(s, t)) hint('ถาดเต็มแล้ว');
+  refresh();
+}
+
+/* ---------- ลาก & วาง ---------- */
+function toSvg(cx, cy){
+  const p = svg.createSVGPoint(); p.x = cx; p.y = cy;
+  return p.matrixTransform(svg.getScreenCTM().inverse());
+}
+function startDrag(t, e, fromPan){
+  e.preventDefault();
+  drag = {t, fromPan: !!fromPan};
+  ghost.className = 'blk ' + (SQUARE[t]?'square':'circle') + ' b-' + t;
+  ghost.textContent = TXT[t];
+  ghost.style.display = 'flex';
+  moveDrag(e);
+  window.addEventListener('pointermove', moveDrag);
+  window.addEventListener('pointerup', endDrag);
+  window.addEventListener('pointercancel', endDrag);
+}
+function moveDrag(e){
+  if (!drag) return;
+  ghost.style.left = e.clientX + 'px'; ghost.style.top = e.clientY + 'px';
+  const r = stage.getBoundingClientRect();
+  const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+  const p = toSvg(e.clientX, e.clientY);
+  hover = (inside && p.y < TABLE_Y - 5) ? (p.x < CX ? 'L' : 'R') : null;
+}
+function endDrag(){
+  window.removeEventListener('pointermove', moveDrag);
+  window.removeEventListener('pointerup', endDrag);
+  window.removeEventListener('pointercancel', endDrag);
+  ghost.style.display = 'none';
+  if (drag && hover) dropOn(hover, drag.t, drag.fromPan);
+  drag = null; hover = null;
+}
+
+document.querySelectorAll('#tray .blk').forEach(el =>
+  el.addEventListener('pointerdown', e => startDrag(el.dataset.t, e, false)));
+
+// หยิบบล็อกออกจากถาด (ทั้งสองโหมด) แล้วนำไปวางฝั่งใดก็ได้ หรือลากออกนอกตาชั่งเพื่อทิ้ง
+svg.addEventListener('pointerdown', e => {
+  const g = e.target.closest('[data-id]');
+  if (!g) return;
+  const s = g.dataset.side, id = +g.dataset.id;
+  const it = side[s].find(i => i.id === id);
+  if (!it || it.dying) return;
+  if (mode === 'operate') snapshot();
+  side[s] = side[s].filter(i => i.id !== id);
+  refresh();
+  startDrag(it.t, e, true);
+});
+
+/* ---------- วาด ---------- */
+function blockSvg(t, cx, cy, sz, scale, dataAttr){
+  const h = sz/2;
+  let s = `<g ${dataAttr||''} transform="translate(${cx} ${cy}) scale(${scale})" filter="url(#sh)" style="cursor:grab">`;
+  s += SQUARE[t]
+    ? `<rect x="${-h}" y="${-h}" width="${sz}" height="${sz}" rx="10" fill="url(#g${t})" stroke="#fff" stroke-width="2.5"/>`
+    : `<circle r="${h}" fill="url(#g${t})" stroke="#fff" stroke-width="2.5"/>`;
+  s += `<text y="${sz*0.18}" font-size="${sz*0.5}" font-weight="800" text-anchor="middle" fill="${TXTC[t]}">${TXT[t]}</text></g>`;
+  return s;
+}
+
+function panSvg(s, px, py, now){
+  const y = py + DROP, w = 130;
+  let h = '';
+  if (hover === s){
+    h += `<ellipse cx="${px}" cy="${y-60}" rx="165" ry="135" fill="rgba(63,191,138,.14)" stroke="#3fbf8a" stroke-width="3" stroke-dasharray="10 8"/>`;
+  }
+  h += `<line x1="${px}" y1="${py}" x2="${px-w}" y2="${y}" stroke="#8fb3c7" stroke-width="3"/>
+        <line x1="${px}" y1="${py}" x2="${px+w}" y2="${y}" stroke="#8fb3c7" stroke-width="3"/>
+        <line x1="${px}" y1="${py}" x2="${px}" y2="${y+20}" stroke="#8fb3c7" stroke-width="3"/>
+        <path d="M${px-w-10},${y} Q${px},${y+58} ${px+w+10},${y} Z" fill="#ffffff" stroke="#3fbf8a" stroke-width="5" stroke-linejoin="round" filter="url(#sh)"/>`;
+
+  const list = [...side[s]].sort((a,b) => T.indexOf(a.t)-T.indexOf(b.t) || a.id-b.id);
+  list.forEach((it, i) => {
+    const r = Math.floor(i/PER), c = i % PER;
+    const n = Math.min(PER, list.length - r*PER);
+    const x0 = px - (n*(SZ+GAP)-GAP)/2;
+    const cx = x0 + c*(SZ+GAP) + SZ/2;
+    const cy = y + 20 - SZ/2 - r*(SZ+GAP);
+    if (it.dying){
+      const p = Math.min(1, (now - it.t0)/DIE_MS);
+      const sc = p < .3 ? 1 + .35*(p/.3) : 1.35*(1 - (p-.3)/.7);
+      h += `<circle cx="${cx}" cy="${cy}" r="${SZ*.55 + p*SZ*1.1}" fill="none" stroke="#3fbf8a" stroke-width="4" opacity="${1-p}"/>`;
+      h += blockSvg(it.t, cx, cy, SZ, Math.max(sc,0.01));
+    } else {
+      h += blockSvg(it.t, cx, cy, SZ, 1, `data-side="${s}" data-id="${it.id}"`);
+    }
+  });
+  return h;
+}
+
+function draw(now){
+  const rad = angle*Math.PI/180;
+  const ex = HALF*Math.cos(rad), ey = HALF*Math.sin(rad);
+  const lx = CX-ex, ly = PIVOT_Y-ey, rx = CX+ex, ry = PIVOT_Y+ey;
+  let h = '';
+  h += `<line x1="${lx}" y1="${ly}" x2="${rx}" y2="${ry}" stroke="#9ec0d3" stroke-width="14" stroke-linecap="round"/>
+        <line x1="${lx}" y1="${ly-2}" x2="${rx}" y2="${ry-2}" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity=".9"/>`;
+  h += panSvg('L', lx, ly, now) + panSvg('R', rx, ry, now);
+  h += `<circle cx="${lx}" cy="${ly}" r="9" fill="#3fbf8a" stroke="#fff" stroke-width="3"/>
+        <circle cx="${rx}" cy="${ry}" r="9" fill="#3fbf8a" stroke="#fff" stroke-width="3"/>
+        <circle cx="${CX}" cy="${PIVOT_Y}" r="15" fill="#3fbf8a" stroke="#fff" stroke-width="4"/>`;
+  dyn.innerHTML = h;
+}
+
+function tick(now){
+  ['L','R'].forEach(s => {
+    if (side[s].some(i => i.dying && now >= i.dieAt)) side[s] = side[s].filter(i => !(i.dying && now >= i.dieAt));
+  });
+  angle += (targetAngle - angle)*0.1;
+  if (Math.abs(targetAngle-angle) < 0.01) angle = targetAngle;
+  draw(now);
+  requestAnimationFrame(tick);
+}
+
+/* ---------- ปุ่ม ---------- */
+function solveX(){
+  const l = counts('L'), r = counts('R');
+  const a = (l.px-l.nx)-(r.px-r.nx), b = (r.p1-r.n1)-(l.p1-l.n1);
+  return a !== 0 ? b/a : null;
+}
+function setX(v){
+  xVal = v;
+  document.getElementById('xslider').value = v;
+  document.getElementById('xv').textContent = Math.round(v*100)/100;
+  refresh();
+}
+function showMode(){
+  document.getElementById('setupCtl').style.display = mode==='setup' ? 'flex' : 'none';
+  document.getElementById('opCtl').style.display = mode==='operate' ? 'flex' : 'none';
+  defaultHint();
+}
+
+document.getElementById('lockBtn').onclick = () => {
+  purge();
+  if (!side.L.length && !side.R.length){ hint('วางบล็อกบนตาชั่งก่อนนะ'); return; }
+  initEq = {L:counts('L'), R:counts('R')};
+  mode = 'operate'; hist = [];
+  const sol = solveX();
+  showMode();
+  if (sol !== null){
+    setX(Math.max(-10, Math.min(10, sol)));
+    hint('ตั้งสมการแล้ว! ตาชั่งจะสมดุลเมื่อ x = ' + (Math.round(sol*100)/100));
+  } else { refresh(); hint('ตั้งสมการแล้ว (สมการนี้ไม่มีคำตอบ x ค่าเดียว)'); }
+};
+document.getElementById('undoBtn').onclick = () => {
+  if (!hist.length) return;
+  const st = JSON.parse(hist.pop());
+  side.L = st.L.map(t => ({id:nextId++, t, dying:false}));
+  side.R = st.R.map(t => ({id:nextId++, t, dying:false}));
+  refresh();
+};
+document.getElementById('editBtn').onclick = () => {
+  mode = 'setup'; initEq = null; hist = []; showMode(); refresh();
+};
+document.getElementById('resetBtn').onclick = () => {
+  side = {L:[], R:[]}; initEq = null; hist = []; mode = 'setup';
+  setX(1); showMode(); refresh();
+};
+document.getElementById('xslider').oninput = e => setX(parseFloat(e.target.value));
+
+document.getElementById('fsBtn').onclick = () => {
+  const d = document, el = d.documentElement;
+  if (!d.fullscreenElement) (el.requestFullscreen || el.webkitRequestFullscreen || (()=>{})).call(el);
+  else (d.exitFullscreen || d.webkitExitFullscreen || (()=>{})).call(d);
+};
+
+showMode(); refresh(); requestAnimationFrame(tick);
+</script>
+</body>
+</html>
